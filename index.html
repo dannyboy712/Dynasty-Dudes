@@ -28,7 +28,7 @@ h1{font-size:20px;margin:0;font-weight:800}
 .pad{padding:12px 14px}
 .row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);min-height:56px}
 .row:last-child{border-bottom:0}.grow{flex:1;min-width:0}
-[data-pid]{cursor:pointer}[data-pid]:active{opacity:.6}
+[data-pid],[data-tg]{cursor:pointer}[data-pid]:active,[data-tg]:active{opacity:.6}
 .nm{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .val{font-variant-numeric:tabular-nums;font-weight:700;font-size:14px;text-align:right}
 .slot{width:28px;font-size:12px;font-weight:800;flex:none}
@@ -45,7 +45,8 @@ h1{font-size:20px;margin:0;font-weight:800}
 .seg{display:flex;margin:8px 12px;background:var(--card);border-radius:12px;padding:3px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
 .seg button{flex:1;border:0;background:none;color:var(--mut);padding:9px 0;font-weight:800;border-radius:10px;font-size:13px;text-shadow:0 1px 3px rgba(0,0,0,.65)}
 .seg button.on{background:var(--acc);color:#04201c;text-shadow:none}
-input{width:calc(100% - 24px);margin:6px 12px;background:var(--card);border:0;color:var(--txt);border-radius:12px;padding:12px 14px;font-size:16px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+input,select{width:calc(100% - 24px);margin:6px 12px;background:var(--card);border:0;color:var(--txt);border-radius:12px;padding:12px 14px;font-size:16px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+select option{color:#000}
 button.btn{background:var(--acc);color:#04201c;border:0;border-radius:12px;padding:13px;font-size:16px;font-weight:800;width:100%;margin-top:10px;text-shadow:none}
 button.lnk{background:none;border:0;color:#ffd0e8;font-size:14px;padding:10px 16px;text-shadow:0 1px 4px rgba(0,0,0,.8)}
 nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:rgba(190,30,110,.28);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);z-index:5}
@@ -59,8 +60,11 @@ summary{list-style:none;cursor:pointer}summary::-webkit-details-marker{display:n
 .back{position:sticky;top:0;background:#46102e;padding:12px 16px;font-weight:700;color:var(--acc);z-index:2}
 .hl{background:var(--card2);margin:0 -14px;padding:0 14px}
 .tip{padding:6px 0;line-height:1.4;color:#ffe8f4;font-size:13.5px}
-.why{padding:4px 0;line-height:1.4;font-size:13px;color:#ffe8f4}
+.why{padding:3px 0;line-height:1.4;font-size:13px;color:#ffe8f4}
 .why b{color:var(--acc)}
+.ck{width:22px;height:22px;border-radius:50%;border:2px solid var(--mut);display:grid;place-items:center;font-size:13px;font-weight:800;flex:none}
+.ck.on{background:var(--acc);border-color:var(--acc);color:#04201c;text-shadow:none}
+.mini{position:sticky;top:env(safe-area-inset-top,0px);z-index:4;display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 12px;padding:9px 14px;border-radius:12px;background:rgba(80,14,52,.9);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-size:13px;font-weight:700}
 </style></head><body>
 <div id="bg"></div>
 <div id="app"></div>
@@ -73,6 +77,7 @@ const ls={get:(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e)
 const j=async u=>{const r=await fetch(u);if(!r.ok)throw Error(r.status);return r.json()};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const sum=a=>a.reduce((x,y)=>x+y,0),fmt=n=>n?Math.round(n).toLocaleString('en-US'):'–';
+const sg=n=>n>0?'+'+fmt(n):n<0?'−'+fmt(-n):'0';
 const POS=['QB','RB','WR','TE'];
 const CL={QB:'#ff2a6d',RB:'#00ceb8',WR:'#ff9ad5',TE:'#ffae58',FLX:'#c4a1ff',SF:'#ff2a6d',BN:'#d9a3c0'};
 const IC={Questionable:'#c9971c',Doubtful:'#e07b24',Out:'#e5484d',IR:'#e5484d',PUP:'#e5484d',Sus:'#9b59b6',DNR:'#e5484d',NA:'#a0708a'};
@@ -80,6 +85,7 @@ const IA={Questionable:'Q',Doubtful:'D',Out:'O',IR:'IR',PUP:'PUP',Sus:'SUS',DNR:
 const MODES={rebuild:'Rebuilding',fringe:'Fringe',contender:'Contender'};
 let S=ls.get('cfg',{}),D=ls.get('data',null),PL=ls.get('pl',{ts:0,m:{}}).m,tab='roster',filt='ALL',q='',status='',lastRun=0;
 let POOL=[],POOLKEY='',PAGE=[],NC=null;const shown=new Set();
+const TB={view:'sug',p:'',give:new Set(),get:new Set()};
 
 const mk=(id,vals=D?.vals)=>{const v=vals?.[id],o=PL[id]||{};return{id,name:v?.n||o.n||id,pos:v?.p||o.p||'?',team:o.t||v?.t||'FA',age:v?.a||o.a,v:v?.v||0,r:v?.r,inj:o.inj,body:o.body,note:o.note,num:o.num,ht:o.ht,wt:o.wt,col:o.col,exp:o.exp,st:o.st,dco:o.dco}};
 
@@ -99,7 +105,6 @@ function assign(pl,SL){
   take(['QB'],SL.QB,'QB');take(['RB'],SL.RB,'RB');take(['WR'],SL.WR,'WR');take(['TE'],SL.TE,'TE');take(['RB','WR','TE'],SL.FLEX,'FLX');take(POS,SL.SF,'SF');
   return{rows,bench:so.filter(x=>!used.has(x.id))};
 }
-/* needs for EVERY team: position rank, spare depth, and contender/rebuild window */
 function computeNeeds(){
   if(NC&&NC.ts===D.ts)return NC;
   const SL=D.slots,N=D.teams.length,t3=Math.max(1,Math.ceil(N/3)),R={};
@@ -164,6 +169,80 @@ function take(){
   PAGE=rest.slice(0,8);PAGE.forEach(r=>shown.add(r.k));
 }
 
+/* ---------- trade assessment ---------- */
+const WT=[1,.65,.45,.35,.3,.25,.2];
+const adj=a=>[...a].map(p=>p.v).sort((x,y)=>y-x).reduce((s,v,i)=>s+v*(WT[i]??.2),0);
+function posScore(pl,k){const n=Math.max(1,D.slots[k]+(k==='QB'?D.slots.SF:Math.round(D.slots.FLEX/3)));return sum(pl.filter(p=>p.pos===k).map(p=>p.v).sort((a,b)=>b-a).slice(0,n))}
+function ranksFor(over){const out={};POS.forEach(k=>{const sc=D.teams.map(t=>posScore(over[t.rid]||t.players,k));D.teams.forEach((t,i)=>{(out[t.rid]=out[t.rid]||{})[k]=sc.filter(x=>x>sc[i]).length+1})});return out}
+const assetsOf=t=>[...t.players,...t.picks].sort((a,b)=>b.v-a.v);
+function assess(me,pt,give,get){
+  const SL=D.slots,N=D.teams.length,mode=S.mode||'fringe',NR=computeNeeds().R;
+  const gp=give.filter(p=>!p.isPick),tp=get.filter(p=>!p.isPick);
+  const newMe=[...me.players.filter(p=>!gp.some(x=>x.id===p.id)),...tp],newPt=[...pt.players.filter(p=>!tp.some(x=>x.id===p.id)),...gp];
+  const mn=lineup(newMe,SL)-lineup(me.players,SL),tn=lineup(newPt,SL)-lineup(pt.players,SL);
+  const ga=adj(give),ta=adj(get),diff=(ta-ga)/Math.max(ga,ta,1);
+  const rb=ranksFor({}),ra=ranksFor({[me.rid]:newMe,[pt.rid]:newPt});
+  const avg=a=>a.length?sum(a.map(p=>p.age||26))/a.length:null,sa=avg(gp),ra2=avg(tp),r0=x=>Math.round(x);
+  let v,vc;
+  if(diff>=.1){v='Heavily in your favor';vc='good'}else if(diff>=.03){v='Slightly in your favor';vc='good'}else if(diff>-.03){v='Fair trade';vc='good'}else if(diff>-.1){v='Slightly in their favor';vc='warn'}else{v='Heavily in their favor';vc='warn'}
+  let pts=diff<=-.03?3:diff<.03?2:diff<.1?1:0;
+  if(tn>0)pts+=2;
+  if(gp.some(p=>NR[pt.rid].pos[p.pos].lv===2))pts++;
+  const w=NR[pt.rid].win;
+  if(w==='Rebuilding'&&(give.some(p=>p.isPick)||(sa!=null&&ra2!=null&&sa<ra2)))pts++;
+  if(w==='Contender'&&tn>0)pts++;
+  const acc=pts>=5?['Likely to be accepted','good']:pts>=3?['Possible','warn']:['Unlikely to be accepted','warn'];
+  const dAge=sa!=null&&ra2!=null?sa-ra2:0;
+  let fit;
+  if(mode==='contender')fit=mn>0?['Good','good']:mn===0?['Neutral','warn']:['Poor','warn'];
+  else if(mode==='rebuild'){const pk=get.some(p=>p.isPick)&&!give.some(p=>p.isPick);fit=(dAge>=1.5||pk)?['Good','good']:dAge<=-1.5?['Poor','warn']:['Neutral','warn']}
+  else fit=(mn>0||(dAge>=2&&mn>=0))?['Good','good']:mn<0?['Poor','warn']:['Neutral','warn'];
+  const you=[],them=[];
+  [...new Set(tp.map(p=>p.pos))].forEach(k=>{const lv=NR[me.rid].pos[k].lv;you.push(['g',lv===2?`Fills your ${k} need (#${rb[me.rid][k]} of ${N} → #${ra[me.rid][k]})`:lv===0?`Adds to your ${k} strength`:`Adds ${k} depth`])});
+  [...new Set(gp.map(p=>p.pos))].forEach(k=>{const lv=NR[me.rid].pos[k].lv;
+    if(lv===2)you.push(['w',`Trades away ${k} where you’re already thin`]);
+    else if(!NR[me.rid].sur[k]&&ra[me.rid][k]>rb[me.rid][k])you.push(['w',`Weakens your ${k} room (#${rb[me.rid][k]} → #${ra[me.rid][k]})`])});
+  you.push([mn>0?'g':mn<0?'w':'g',mn===0?'No change to your starting lineup':`Your starting lineup ${sg(mn)}`]);
+  if(get.some(p=>p.isPick))you.push(['g','You add draft capital']);
+  if(give.some(p=>p.isPick)&&mode==='rebuild')you.push(['w','You give up picks while rebuilding']);
+  if(Math.abs(dAge)>=1.5)you.push([dAge<0&&mode==='rebuild'?'w':'g',`You get ${dAge>0?'younger':'older'} (avg age ${r0(sa)} → ${r0(ra2)})`]);
+  tp.filter(p=>p.inj).forEach(p=>you.push(['w',`${p.name} is ${p.inj}${p.body?' ('+p.body+')':''}`]));
+  if(tp.length>gp.length)you.push(['w',`You receive ${tp.length-gp.length} more player${tp.length-gp.length>1?'s':''} than you send, so you may need to drop someone`]);
+  [...new Set(gp.map(p=>p.pos))].forEach(k=>{if(NR[pt.rid].pos[k].lv===2)them.push(['g',`Fills their ${k} need`])});
+  them.push([tn>0?'g':tn<0?'w':'g',tn===0?'No change to their starting lineup':`Their starting lineup ${sg(tn)}`]);
+  if(w==='Rebuilding'&&give.some(p=>p.isPick))them.push(['g','They’re rebuilding and gain pick capital']);
+  if(w==='Contender'&&tn>0)them.push(['g','They’re contending and get stronger now']);
+  let sug='';const gap=Math.abs(ta-ga);
+  if(Math.abs(diff)>=.05){
+    const toMine=diff>0,side=toMine?assetsOf(me).filter(p=>!give.some(x=>x.id===p.id)):assetsOf(pt).filter(p=>!get.some(x=>x.id===p.id));
+    const wn=WT[(toMine?give:get).length]??.2,c=side.filter(p=>p.v>0).sort((a,b)=>Math.abs(a.v*wn-gap)-Math.abs(b.v*wn-gap))[0];
+    if(c)sug=toMine?`They’d likely want more from you to make this work, such as ${c.name} (${fmt(c.v)}).`:`You’re overpaying by roughly ${fmt(gap)} in adjusted value. Ask them to add something like ${c.name} (${fmt(c.v)}).`;
+  }
+  return{v,vc,acc,fit,you,them,sug,mn,tn,rb,ra,ga,ta,rawG:sum(give.map(p=>p.v)),rawT:sum(get.map(p=>p.v)),w};
+}
+function assessHTML(me,pt,give,get){
+  if(!give.length||!get.length)return `<div class="card pad"><div class="nm">Build your trade</div><div class="sub" style="margin-top:4px">Select at least one asset on each side to get an assessment.</div></div>`;
+  const A=assess(me,pt,give,get),pct=A.ta/Math.max(A.ta+A.ga,1)*100;
+  const rl=rid=>POS.map(k=>{const b=A.rb[rid][k],a=A.ra[rid][k];return `${k} #${b}${a!==b?` → <b class="${a<b?'good':'warn'}">#${a}${a<b?'▲':'▼'}</b>`:''}`}).join(' · ');
+  const li=a=>a.map(([c,t])=>`<div class="why">${c==='w'?'⚠':'✔'} ${t}</div>`).join('');
+  return `<div class="mini"><span>Send ${fmt(A.rawG)}</span><b class="${A.vc}">${A.v}</b><span>Get ${fmt(A.rawT)}</span></div>
+  <div class="card pad"><div class="sub">ASSESSMENT</div>
+  <div class="${A.vc}" style="font-size:21px;font-weight:800;margin:2px 0 6px">${A.v}</div>
+  <div style="display:flex;justify-content:space-between;font-size:13px"><span>You send <b>${fmt(A.rawG)}</b></span><span>You get <b>${fmt(A.rawT)}</b></span></div>
+  <div class="bar" style="height:8px"><i style="width:${pct}%"></i></div>
+  <div class="sub" style="margin-top:4px">Values are adjusted so one star counts for more than several lesser pieces.</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 4px"><span class="tag ${A.acc[1]}">${A.acc[0]}</span><span class="tag ${A.fit[1]}">Fit for ${MODES[S.mode||'fringe']}: ${A.fit[0]}</span><span class="tag">Their window: ${A.w}</span></div>
+  <div class="sec" style="padding:10px 0 4px">For you</div>${li(A.you)}
+  <div class="sec" style="padding:10px 0 4px">For ${esc(pt.name)}</div>${li(A.them)}
+  <div class="sec" style="padding:10px 0 4px">Position ranks after trade</div>
+  <div class="why"><b>You:</b> ${rl(me.rid)}</div><div class="why"><b>Them:</b> ${rl(pt.rid)}</div>
+  ${A.sug?`<div class="tip" style="margin-top:8px">💡 ${A.sug}</div>`:''}</div>`;
+}
+function trow(p,side){
+  const on=TB[side].has(p.id);
+  return `<div class="row ${on?'hl':''}" data-tg="${side}:${p.id}"><span class="ck ${on?'on':''}">${on?'✓':''}</span>${p.isPick?pav(p):av(p.id)}<div class="grow"><div class="nm">${esc(p.name)}${p.isPick?'':inj(p.inj)}</div><div class="sub">${p.isPick?'Draft pick':p.pos+' - '+esc(p.team)+(p.age?' · '+Math.round(p.age):'')}</div></div><div class="val">${fmt(p.v)}</div></div>`;
+}
+
 /* ---------- refresh ---------- */
 async function refresh(){
   if(!S.leagueId)return;
@@ -205,6 +284,8 @@ async function refresh(){
     D={teams,vals,pk,gp,lname:lg.name,lav:lg.avatar,sf,ppr,ts:Date.now(),
       slots:{QB:c('QB'),RB:c('RB'),WR:c('WR'),TE:c('TE'),FLEX:c('FLEX')+c('REC_FLEX'),SF:c('SUPER_FLEX')}};
     ls.set('data',D);status=fresh?'Updated just now':'Rosters updated · values offline';
+    const ok=new Set(teams.flatMap(t=>[...t.players,...t.picks].map(p=>p.id)));
+    [TB.give,TB.get].forEach(s=>[...s].forEach(i=>{if(!ok.has(i))s.delete(i)}));
   }catch(e){status='Offline · showing saved data'}
   paintStatus();if(D)render();
 }
@@ -225,6 +306,7 @@ function setup(msg=''){
       $('#lgs').innerHTML='<div class="sec">Choose a league</div>'+lgs.map((l,i)=>`<div class="card pad" data-i="${i}"><div class="nm">${esc(l.name)}</div><div class="sub">${l.total_rosters} teams</div></div>`).join('');
       document.querySelectorAll('#lgs .card').forEach(el=>el.onclick=()=>{
         const l=lgs[el.dataset.i];S={username:name,userId:u.user_id,leagueId:l.league_id,mode:S.mode||'fringe'};ls.set('cfg',S);D=null;
+        TB.p='';TB.give.clear();TB.get.clear();
         $('#app').innerHTML='<div class="sub" style="padding:30px 16px">Loading league…</div>';refresh();
       });
     }catch(e){$('#msg').textContent='Couldn’t find that username.'}
@@ -288,12 +370,24 @@ function valList(){
     return`<div class="row" data-pid="${p.id}"><span class="sub" style="width:26px">${p.r}</span>${av(p.id)}<div class="grow"><div class="nm">${esc(p.name)}${inj(s)}</div><div class="sub">${p.pos} - ${esc(PL[p.id]?.t||p.team||'FA')} · <span class="${o?.mine?'good':''}">${o?(o.mine?'You':esc(o.name)):'Unrostered'}</span></div><div class="bar"><i style="width:${p.v/mx*100}%"></i></div></div><div class="val">${fmt(p.v)}</div></div>`}).join('')||'<div class="row sub">No matches</div>'}</div>`;
 }
 function tabTrades(){
+  const vs=`<div class="seg">${[['sug','Suggestions'],['build','Trade Builder']].map(([k,l])=>`<button class="${TB.view===k?'on':''}" data-v="${k}">${l}</button>`).join('')}</div>`;
+  return vs+`<div class="sec" style="padding-top:4px">Your strategy</div>${seg()}`+(TB.view==='build'?tabBuilder():tabSuggest());
+}
+function tabBuilder(){
+  const me=D.teams.find(t=>t.mine);if(!me)return'<div class="card pad">No team found.</div>';
+  const others=D.teams.filter(t=>!t.mine),pt=others.find(t=>String(t.rid)===String(TB.p));
+  let h=`<div class="sec">Trade partner</div><select id="tbp"><option value="">Choose a team…</option>${others.map(t=>`<option value="${t.rid}" ${pt&&pt.rid===t.rid?'selected':''}>${esc(t.name)}</option>`).join('')}</select>`;
+  if(!pt)return h+'<div class="sub" style="padding:8px 16px">Pick a team, then tap the players and picks on each side.</div>';
+  const ma=assetsOf(me),pa=assetsOf(pt),give=ma.filter(p=>TB.give.has(p.id)),get=pa.filter(p=>TB.get.has(p.id));
+  return h+assessHTML(me,pt,give,get)+`<div class="sec">You send (${give.length})</div><div class="card">${ma.map(p=>trow(p,'give')).join('')}</div><div class="sec">You get from ${esc(pt.name)} (${get.length})</div><div class="card">${pa.map(p=>trow(p,'get')).join('')}</div><button class="lnk" id="tbc">Clear trade</button>`;
+}
+function tabSuggest(){
   const key=D.ts+'|'+(S.mode||'fringe');
   if(POOLKEY!==key){POOLKEY=key;POOL=pool();shown.clear();take()}
   const mode=S.mode||'fringe',N=D.teams.length,NR=computeNeeds().R,me=D.teams.find(t=>t.mine),mr=NR[me.rid];
   const note={contender:'Upgrades your starting lineup, often by spending picks.',rebuild:'Gets you younger players and picks for aging value.',fringe:'Improves your lineup while both sides benefit.'}[mode];
   const nl=POS.filter(k=>mr.pos[k].lv===2),sp=POS.filter(k=>mr.sur[k]);
-  let h=`<div class="sec" style="padding-top:4px">Your strategy</div>${seg()}<div class="sub" style="padding:0 16px;text-shadow:0 1px 4px rgba(0,0,0,.8)">${note} Matches what both teams need, with values within about ±10%.<br>Your needs: <b>${nl.join(', ')||'none'}</b> · Spare depth: <b>${sp.join(', ')||'none'}</b></div>`;
+  let h=`<div class="sub" style="padding:0 16px;text-shadow:0 1px 4px rgba(0,0,0,.8)">${note} Matches what both teams need, with values within about ±10%.<br>Your needs: <b>${nl.join(', ')||'none'}</b> · Spare depth: <b>${sp.join(', ')||'none'}</b></div>`;
   if(!PAGE.length)return h+'<div class="card pad">No fitting trades right now. Try another strategy or check back after the next update.</div>';
   h+=`<div style="padding:8px 12px 0"><button class="btn" id="newt" style="margin-top:0">↻ New suggestions</button></div>`;
   return h+PAGE.map(r=>{
@@ -331,7 +425,12 @@ function openP(id){
 function closeP(){$('#modal').style.display='none';document.body.style.overflow=''}
 document.addEventListener('click',e=>{
   const m=e.target.closest('[data-m]');
-  if(m){S.mode=m.dataset.m;ls.set('cfg',S);render();return}
+  if(m){S.mode=m.dataset.m;ls.set('cfg',S);const y=scrollY;render();scrollTo(0,y);return}
+  const v=e.target.closest('[data-v]');
+  if(v){TB.view=v.dataset.v;render();scrollTo(0,0);return}
+  const tg=e.target.closest('[data-tg]');
+  if(tg){const s=tg.dataset.tg,i=s.indexOf(':'),side=s.slice(0,i),id=s.slice(i+1),set=TB[side];set.has(id)?set.delete(id):set.add(id);const y=scrollY;render();scrollTo(0,y);return}
+  if(e.target.closest('#tbc')){TB.give.clear();TB.get.clear();render();return}
   if(e.target.closest('#newt')){take();render();scrollTo(0,0);return}
   const el=e.target.closest('[data-pid]');if(el&&D)openP(el.dataset.pid);
 });
@@ -341,12 +440,13 @@ const ICON={roster:'M12 12a4 4 0 100-8 4 4 0 000 8zm0 2c-4 0-8 2-8 5v1h16v-1c0-3
 function render(){
   if(!D)return;
   $('#nav').style.display='flex';
-  const titles={roster:'My Roster',league:'League',values:'Trade Values',trades:'Recommended Trades'};
+  const titles={roster:'My Roster',league:'League',values:'Trade Values',trades:'Trades'};
   const body={roster:tabRoster,league:tabLeague,values:tabValues,trades:tabTrades}[tab]();
   $('#app').innerHTML=`<div class="hd">${D.lav?`<img src="https://sleepercdn.com/avatars/thumbs/${D.lav}" alt="">`:'<span class="lg"></span>'}<div class="grow"><h1>${titles[tab]}</h1><div class="sub">${esc(D.lname)} · <span id="st">${status}</span></div></div><button class="lnk" id="rf" style="padding:6px">↻</button></div>${body}`;
   $('#nav').innerHTML=Object.entries({roster:'Roster',league:'League',values:'Values',trades:'Trades'}).map(([k,l])=>`<button class="${tab===k?'on':''}" data-t="${k}"><svg viewBox="0 0 24 24"><path d="${ICON[k]}"/></svg>${l}</button>`).join('');
   $('#rf').onclick=refresh;
-  $('#sw')&&($('#sw').onclick=()=>{S={mode:S.mode};D=null;ls.set('cfg',S);setup()});
+  $('#sw')&&($('#sw').onclick=()=>{S={mode:S.mode};D=null;ls.set('cfg',S);TB.p='';TB.give.clear();TB.get.clear();setup()});
+  const sel=$('#tbp');if(sel)sel.onchange=()=>{TB.p=sel.value;TB.get.clear();render()};
   if(tab==='values'){valList();$('#q').oninput=e=>{q=e.target.value;valList()};
     document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{filt=b.dataset.f;render()})}
 }
