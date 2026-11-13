@@ -85,6 +85,7 @@ summary{list-style:none;cursor:pointer}summary::-webkit-details-marker{display:n
 .hc .av{width:30px;height:30px}.hc .nm{font-size:12.5px}.hc .val{font-size:13px}
 .rc{flex-direction:row-reverse;text-align:right}
 .sl{text-align:center;font-size:10.5px;font-weight:800}
+.ul{text-decoration:underline;text-decoration-color:rgba(255,255,255,.35)}
 </style></head><body>
 <div id="bg"></div>
 <div id="app"></div>
@@ -98,41 +99,78 @@ const j=async u=>{const r=await fetch(u);if(!r.ok)throw Error(r.status);return r
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const sum=a=>a.reduce((x,y)=>x+y,0),fmt=n=>n?Math.round(n).toLocaleString('en-US'):'–';
 const sg=n=>n>0?'+'+fmt(n):n<0?'−'+fmt(-n):'0';
+const pad2=n=>String(n).padStart(2,'0');
 const POS=['QB','RB','WR','TE'];
 const CL={QB:'#ff2a6d',RB:'#00ceb8',WR:'#ff9ad5',TE:'#ffae58',FLX:'#c4a1ff',SF:'#ff2a6d',BN:'#d9a3c0'};
 const IC={Questionable:'#c9971c',Doubtful:'#e07b24',Out:'#e5484d',IR:'#e5484d',PUP:'#e5484d',Sus:'#9b59b6',DNR:'#e5484d',NA:'#a0708a'};
 const IA={Questionable:'Q',Doubtful:'D',Out:'O',IR:'IR',PUP:'PUP',Sus:'SUS',DNR:'DNR',NA:'NA'};
 const MODES={rebuild:'Rebuilding',fringe:'Fringe',contender:'Contender'};
 const TBC=['#00ceb8','#ffae58','#c4a1ff','#ff9ad5'];
-let S=ls.get('cfg',{}),D=S.leagueId?ls.get('data_'+S.leagueId,null):null,PL=ls.get('pl',{ts:0,m:{}}).m,MU=ls.get('mu',null),tab='roster',filt='ALL',q='',status='',lastRun=0,INJS='new',TBP=[];
+let S=ls.get('cfg',{}),D=S.leagueId?ls.get('data_'+S.leagueId,null):null,PL=ls.get('pl',{ts:0,m:{}}).m,MU=ls.get('mu',null),tab='roster',filt='ALL',q='',status='',lastRun=0,INJS='new',TBP=[],XC={},VS='p',NEAR=null,NEART=0;
 let POOL=[],POOLKEY='',PAGE=[],NC=null,TGP=[];const shown=new Set();
+const PV={y:null,r:1};
 const TB={view:'sug',tm:[],mv:{},op:new Set()},TG={q:'',id:''};
 const LV={view:'m',sb:null,mu:null,wk:null,w:null,open:new Set(),init:false,game:null,plays:null,ts:0,err:''};
 const resetTB=()=>{TB.tm=[];TB.mv={};TB.op=new Set();TG.q='';TG.id='';POOLKEY='';NC=null};
 const soft=()=>{const a=document.activeElement;if(a&&['INPUT','SELECT'].includes(a.tagName))return;render()};
 const DYN=()=>D?.vs?.dyn!==false;
+const TM=a=>a==='WSH'?'WAS':a;
 const mk=(id,vals=D?.vals)=>{const v=vals?.[id],o=PL[id]||{};return{id,name:v?.n||o.n||id,pos:v?.p||o.p||'?',team:o.t||v?.t||'FA',age:v?.a||o.a,v:v?.v||0,r:v?.r,inj:o.inj,body:o.body,note:o.note,nu:o.nu,num:o.num,ht:o.ht,wt:o.wt,col:o.col,exp:o.exp,st:o.st,dco:o.dco}};
 
-/* ---------- expected points ---------- */
-function xp(p){if(!MU||p.isPick)return null;const r=MU.proj?.[p.id];if(!r)return null;const f=MU.F?.[r.o]?.[p.pos]||1,a=Math.min(1.1,Math.max(.9,1+(f-1)*.5));return{pts:r.p*a,base:r.p,o:r.o,f}}
+/* ---------- my own point projections ---------- */
+function xp(p){
+  if(!MU||p.isPick||!POS.includes(p.pos))return null;
+  if(XC[p.id]!==undefined)return XC[p.id];
+  return XC[p.id]=calcXP(p);
+}
+function calcXP(p){
+  const sp=MU.proj?.[p.id],team=TM(p.team),g=MU.sched?.[team],opp=g?.o||sp?.o;
+  if(!opp)return null;
+  const S1=sp?sp.p:null,f=MU.F?.[opp]?.[p.pos]||1;
+  const ws=Object.entries(MU.P?.[p.id]||{}).sort((a,b)=>a[0]-b[0]).map(e=>e[1]).slice(-8),n=ws.length;
+  if(n<2)return S1==null?null:{pts:S1,sl:S1,o:opp,f,n,mode:'sleeper'};
+  let w=0,t=0;ws.forEach((v,i)=>{const k=Math.pow(.8,n-1-i);w+=k;t+=v*k});const form=t/w;
+  const mu=Math.min(1.15,Math.max(.85,Math.pow(f,.6))),od=MU.odds?.[team];let env=1;
+  if(od&&od.imp){const e=Math.min(1.25,Math.max(.8,od.imp/22.5)),s={QB:1,WR:.9,TE:.8,RB:.6}[p.pos];env=1+s*(e-1);if(p.pos==='RB')env*=1+Math.max(-.08,Math.min(.08,-od.sp*.012))}
+  const hm=g?(g.h?1.015:.985):1,fa=form*mu*env*hm,wf=Math.min(.65,n/(n+4)),pts=S1==null?fa:wf*fa+(1-wf)*S1;
+  const mean=sum(ws)/n,sd=Math.sqrt(sum(ws.map(v=>(v-mean)**2))/Math.max(1,n-1));
+  return{pts,sl:S1,o:opp,f,n,form,mu,env,hm,od,wf,sd:n>=3?sd*Math.min(1.3,Math.max(.6,pts/Math.max(mean,1))):null,mode:'model'};
+}
 const xps=p=>{const x=xp(p);return x?`<div class="sub" style="font-weight:600">${x.pts.toFixed(1)} pts vs ${x.o}${x.f>=1.05?' ▲':x.f<=.95?' ▼':''}</div>`:''};
 async function loadMU(season,week,ppr){
-  if(MU&&MU.season===season&&MU.week===week&&MU.ppr===ppr&&Date.now()-MU.ts<108e5)return MU;
+  if(MU&&MU.v===2&&MU.season===season&&MU.week===week&&MU.ppr===ppr&&Date.now()-MU.ts<108e5)return MU;
   const qs='season_type=regular&position[]=QB&position[]=RB&position[]=WR&position[]=TE';
-  const pk=ppr>=1?'pts_ppr':ppr>=.5?'pts_half_ppr':'pts_std',proj={};
-  try{const r=await j(`${SP}/projections/nfl/${season}/${week}?${qs}`);r.forEach(x=>{const v=x.stats?.[pk];if(x.player_id&&v!=null&&x.opponent)proj[x.player_id]={p:v,o:x.opponent}})}catch(e){}
-  let al=ls.get('allow',null);if(!al||al.season!==season)al={season,done:[],A:{},G:{}};
-  const posOf=id=>PL[id]?.p||D?.vals?.[id]?.p;
+  const key=ppr>=1?'pts_ppr':ppr>=.5?'pts_half_ppr':'pts_std',idx=ppr>=1?0:ppr>=.5?1:2,proj={};
+  try{const r=await j(`${SP}/projections/nfl/${season}/${week}?${qs}`);r.forEach(x=>{const v=x.stats?.[key];if(x.player_id&&v!=null&&x.opponent)proj[x.player_id]={p:v,o:x.opponent}})}catch(e){}
+  let sched={},odds={},ok=false;
+  try{const sb=await j(ESPN+'/scoreboard');(sb.events||[]).forEach(ev=>{
+    const c=ev.competitions?.[0],cs=c?.competitors||[];if(cs.length!==2)return;
+    const h=cs.find(x=>x.homeAway==='home'),a=cs.find(x=>x.homeAway==='away');if(!h||!a)return;ok=true;
+    const ha=TM(h.team.abbreviation),aa=TM(a.team.abbreviation);sched[ha]={o:aa,h:1};sched[aa]={o:ha,h:0};
+    const od=c.odds?.[0];
+    if(od&&+od.overUnder){const m=String(od.details||'').match(/([A-Z]{2,4})\s*([+-]?\d+(?:\.\d+)?)/),ou=+od.overUnder;let fav=null,s=0;
+      if(m){fav=TM(m[1]);s=-Math.abs(+m[2])}
+      const i=Math.abs(s),im={};
+      if(fav===ha||fav===aa){im[fav]=(ou+i)/2;im[fav===ha?aa:ha]=(ou-i)/2}else{im[ha]=im[aa]=ou/2;fav=null}
+      odds[ha]={imp:im[ha],sp:fav===ha?s:fav?-s:0};odds[aa]={imp:im[aa],sp:fav===aa?s:fav?-s:0}}
+  })}catch(e){}
+  if(!ok&&MU&&MU.week===week){sched=MU.sched||{};odds=MU.odds||{}}
+  let al=ls.get('allow',null);if(!al||al.season!==season||!al.P)al={season,done:[],A:{},G:{},P:{}};
+  const posOf=id=>PL[id]?.p||D?.vals?.[id]?.p,keys=['pts_ppr','pts_half_ppr','pts_std'];
   for(let w=1;w<week;w++){
     if(al.done.includes(w))continue;
     try{const r=await j(`${SP}/stats/nfl/${season}/${w}?${qs}`),seen={};
-      r.forEach(x=>{const pos=posOf(x.player_id),o=x.opponent,pts=x.stats?.pts_ppr;if(!pos||!o||pts==null)return;(al.A[o]=al.A[o]||{})[pos]=((al.A[o]||{})[pos]||0)+pts;seen[o]=1});
+      r.forEach(x=>{const id=x.player_id,pos=posOf(id),o=x.opponent,s=x.stats||{};if(!pos||!o||s.pts_ppr==null||s.gp===0)return;
+        (al.A[o]=al.A[o]||{})[pos]=((al.A[o]||{})[pos]||0)+s.pts_ppr;seen[o]=1;
+        if(D?.vals?.[id])(al.P[id]=al.P[id]||{})[w]=keys.map(k=>s[k]??s.pts_ppr)});
       Object.keys(seen).forEach(o=>al.G[o]=(al.G[o]||0)+1);al.done.push(w);ls.set('allow',al)}catch(e){break}
   }
   const F={};
   if(al.done.length>=2)POS.forEach(k=>{const pg={};Object.keys(al.A).forEach(o=>{if(al.G[o])pg[o]=(al.A[o][k]||0)/al.G[o]});const vs=Object.values(pg),avg=sum(vs)/Math.max(vs.length,1);if(avg)Object.keys(pg).forEach(o=>{(F[o]=F[o]||{})[k]=pg[o]/avg})});
-  MU={season,week,ppr,proj,F,ts:Date.now(),n:al.done.length};ls.set('mu',MU);return MU;
+  const P={};for(const id in al.P){P[id]={};for(const w in al.P[id])P[id][w]=al.P[id][w][idx]}
+  MU={v:2,season,week,ppr,proj,F,P,sched,odds,ts:Date.now(),n:al.done.length};ls.set('mu',MU);XC={};return MU;
 }
+const hasProj=()=>!!(MU&&(Object.keys(MU.proj||{}).length||Object.keys(MU.P||{}).length));
 
 /* ---------- engine ---------- */
 function lineup(pl,SL){
@@ -152,13 +190,13 @@ function assign(pl,SL){
 }
 function scoreP(p){
   const f={Out:0,IR:0,PUP:0,Sus:0,DNR:0,NA:0,Doubtful:.25,Questionable:.92}[p.inj];const m=f==null?1:f;
-  if(MU&&Object.keys(MU.proj||{}).length){const x=xp(p);return x?x.pts*m:0}
+  if(hasProj()){const x=xp(p);return x?x.pts*m:0}
   return p.v/500*m;
 }
 function recLineup(me){
-  const hasP=!!(MU&&Object.keys(MU.proj||{}).length);
+  const hp=hasProj();
   const L=assign(me.players.map(p=>({...p,v:scoreP(p),o:p})),D.slots);
-  return{hasP,rows:L.rows.map(r=>({s:r.s,p:r.p?r.p.o:null,sc:r.p?r.p.v:0})),bench:L.bench.map(x=>({p:x.o,sc:x.v}))};
+  return{hasP:hp,rows:L.rows.map(r=>({s:r.s,p:r.p?r.p.o:null,sc:r.p?r.p.v:0})),bench:L.bench.map(x=>({p:x.o,sc:x.v}))};
 }
 function computeNeeds(){
   if(NC&&NC.ts===D.ts)return NC;
@@ -222,6 +260,44 @@ function take(){
   let rest=POOL.filter(r=>!shown.has(r.k));
   if(rest.length<4){shown.clear();rest=POOL}
   PAGE=rest.slice(0,8);PAGE.forEach(r=>shown.add(r.k));
+}
+
+/* ---------- draft pick values (same scale as players) ---------- */
+function pvOf(pc,y,o){
+  const a=pc.mkt[y],m=pc.mdl,i=Math.min(m.length-1,Math.max(0,o-1)),lo=Math.floor(i),f=i-lo,hi=Math.min(m.length-1,lo+1);
+  const md=(m[lo]*(1-f)+m[hi]*f)*(pc.k[y]||.8);let mk=null;
+  if(a&&a.length>=2){const first=a[0],last=a[a.length-1],pd=pc.N/2;
+    if(o>=first[0]-pd&&o<=last[0]+pd){
+      if(o<=first[0])mk=first[1];else if(o>=last[0])mk=last[1];
+      else for(let q=1;q<a.length;q++)if(o<=a[q][0]){const [o0,v0]=a[q-1],[o1,v1]=a[q];mk=v0+(v1-v0)*(o-o0)/(o1-o0);break}
+    }}
+  return{v:mk!=null?mk:md,mk,md};
+}
+function nearest(v){
+  if(!NEAR||NEART!==D.ts){NEAR=Object.entries(D.vals).filter(([i,x])=>POS.includes(x.p)).map(([i,x])=>({id:i,name:x.n,pos:x.p,v:x.v}));NEART=D.ts}
+  const c=NEAR.map(p=>({p,d:Math.abs(p.v-v)})).sort((a,b)=>a.d-b.d).slice(0,12),seen=new Set(),o=[];
+  for(const x of c){if(seen.has(x.p.pos))continue;seen.add(x.p.pos);o.push(x.p);if(o.length>=3)break}
+  return o;
+}
+function tabPicks(){
+  const pc=D.pc;if(!pc)return'<div class="card pad sub">Updating pick values…</div>';
+  const y=PV.y&&pc.yrs.includes(PV.y)?PV.y:pc.py,N=pc.N,R=pc.R,rd=Math.min(PV.r,R);
+  const owner={};D.teams.forEach(t=>t.picks.forEach(p=>owner[p.id]=t));
+  const bySlot=[...D.teams].sort((a,b)=>pc.slot[a.rid]-pc.slot[b.rid]),mx=pvOf(pc,y,1).v||1;
+  const rows=[];for(let s=1;s<=N;s++){
+    const o=(rd-1)*N+s,pv=pvOf(pc,y,o),t=bySlot[s-1],ow=owner[`pk${y}-${rd}-${t.rid}`],nr=nearest(pv.v);
+    const who=ow?(ow.rid===t.rid?(ow.mine?'<span class="good">You own this pick</span>':'Owned by '+esc(ow.name)):`Owned by ${ow.mine?'<span class="good">you</span>':esc(ow.name)}`):'';
+    rows.push(`<div class="row" style="align-items:flex-start"><span class="slot" style="width:44px;color:#ffb612;padding-top:2px;font-size:13px">${rd}.${pad2(s)}</span><div class="grow"><div class="nm">${esc(t.name)}’s pick</div><div class="sub">${who}</div>
+    <div class="sub" style="margin-top:2px">≈ ${nr.map(p=>`<span class="ul" data-pid="${p.id}">${esc(p.name)}</span> (${p.pos})`).join(' · ')||'–'}</div><div class="bar"><i style="width:${pv.v/mx*100}%;background:#ffb612"></i></div></div>
+    <div class="val" style="font-size:16px">${fmt(pv.v)}<div class="sub">${pv.mk!=null?'market '+fmt(pv.mk)+'<br>':''}model ${fmt(pv.md)}</div></div></div>`)}
+  const mid=pvOf(pc,y,(rd-1)*N+(N+1)/2);
+  return `<div class="card pad"><div class="sub">${y} ROOKIE DRAFT · SAME SCALE AS PLAYERS</div>
+  <div class="why" style="margin-top:6px"><b>Market</b> is FantasyCalc’s price for the pick, from the same feed as player values. <b>Model</b> is built from the actual values of this year’s rookies, sorted by order drafted. Where both exist, the market number is the one used in trades.</div>
+  <div class="why">Slots are projected by roster strength (weakest team picks first). The real order isn’t set yet, so in trades each pick is valued closer to the middle of the round.</div></div>
+  <div class="chips">${pc.yrs.map(v=>`<button class="chip ${v===y?'on':''}" data-py="${v}">${v}</button>`).join('')}</div>
+  <div class="chips">${Array.from({length:R},(_,i)=>i+1).map(r=>`<button class="chip ${r===rd?'on':''}" data-pr="${r}">Round ${r}</button>`).join('')}</div>
+  <div class="sub" style="padding:4px 16px">A mid-round ${rd}st/nd/rd/th ≈ <b>${fmt(mid.v)}</b> in player value${mid.mk!=null?' (market)':' (model)'}.</div>
+  <div class="card">${rows.join('')}</div>`;
 }
 
 /* ---------- target a player ---------- */
@@ -363,7 +439,7 @@ function moveSummary(mv){
 }
 function trow(p){
   const d=TB.mv[p.id],dt=d!=null?TBP.find(t=>t.rid===d):null,i=dt?TBP.indexOf(dt):-1;
-  return `<div class="row ${dt?'hl':''}" data-tg="${p.id}"><span class="ck ${dt?'on':''}">${dt?'✓':''}</span>${p.isPick?pav(p):av(p.id)}<div class="grow"><div class="nm">${esc(p.name)}${p.isPick?'':inj(p.inj)}</div><div class="sub">${p.isPick?'Draft pick':p.pos+' - '+esc(p.team)+(p.age?' · '+Math.round(p.age):'')}${dt?` · <b style="color:${TBC[i]}">→ ${esc(nameOf(dt).slice(0,14))}</b>`:''}</div></div><div class="val">${fmt(p.v)}${xps(p)}</div></div>`;
+  return `<div class="row ${dt?'hl':''}" data-tg="${p.id}"><span class="ck ${dt?'on':''}">${dt?'✓':''}</span>${p.isPick?pav(p):av(p.id)}<div class="grow"><div class="nm">${esc(p.name)}${p.isPick?'':inj(p.inj)}</div><div class="sub">${p.isPick?'Draft pick'+(p.proj?' · proj '+p.proj:''):p.pos+' - '+esc(p.team)+(p.age?' · '+Math.round(p.age):'')}${dt?` · <b style="color:${TBC[i]}">→ ${esc(nameOf(dt).slice(0,14))}</b>`:''}</div></div><div class="val">${fmt(p.v)}${xps(p)}</div></div>`;
 }
 function tabBuilder(){
   const me=D.teams.find(t=>t.mine);if(!me)return'<div class="card pad">No team found.</div>';
@@ -381,7 +457,6 @@ function tabBuilder(){
 }
 
 /* ---------- live scores ---------- */
-const TM=a=>a==='WSH'?'WAS':a;
 async function liveLoad(){
   const lid=S.leagueId;if(!lid)return;
   try{
@@ -425,12 +500,14 @@ function gameCard(ev){
   ${mp.length?`<div class="sub" style="padding:2px 0 8px">Your players: ${mp.map(p=>esc(p.name)).join(', ')}</div>`:''}</div>${more}</div>`;
 }
 function pinfo(x,TS){
-  const cur=(LV.w||LV.wk?.week)===MU?.week;let p=0,live=0,hasP=false;
+  const cur=(LV.w||LV.wk?.week)===MU?.week;let p=0,live=0,hasP=false,vr=0;
   (x.starters||[]).forEach((i,k)=>{if(i==='0')return;const a=x.starters_points?.[k]||0,pl=mk(i),st=TS[TM(pl.team)]?.state,xx=cur?xp(pl):null;
     if(xx)hasP=true;const pr=xx?xx.pts:null;if(st==='in')live++;
-    p+=st==='post'?a:st==='in'?Math.max(a,pr??a):(pr??a)});
-  return{p,hasP,live};
+    p+=st==='post'?a:st==='in'?Math.max(a,pr??a):(pr??a);
+    if(st!=='post'){const s=xx?(xx.sd??xx.pts*.4):(a?3:0);vr+=s*s*(st==='in'?.5:1)}});
+  return{p,hasP,live,sd:Math.sqrt(vr)};
 }
+const Phi=z=>{const t=1/(1+.2316419*Math.abs(z)),d=.3989423*Math.exp(-z*z/2),pp=d*t*(.3193815+t*(-.3565638+t*(1.781478+t*(-1.821256+t*1.330274))));return z>0?1-pp:pp};
 function h2h(a,b,TS){
   const n=Math.max(a.starters?.length||0,b.starters?.length||0);let h='';
   const cell=(x,k,r)=>{const i=x.starters?.[k];
@@ -443,11 +520,11 @@ function h2h(a,b,TS){
 function matchCard(a,b,TS,my){
   const id=String(a.matchup_id),open=LV.open.has(id);
   const ta=D.teams.find(t=>t.rid===a.roster_id)||{name:'Team '+a.roster_id},tb=D.teams.find(t=>t.rid===b.roster_id)||{name:'Team '+b.roster_id};
-  const ia=pinfo(a,TS),ib=pinfo(b,TS),hp=ia.hasP||ib.hasP,wp=1/(1+Math.exp(-(ia.p-ib.p)/14)),live=ia.live+ib.live,pa=a.points||0,pb=b.points||0;
+  const ia=pinfo(a,TS),ib=pinfo(b,TS),hp=ia.hasP||ib.hasP,wp=Phi((ia.p-ib.p)/Math.sqrt(ia.sd*ia.sd+ib.sd*ib.sd+4)),live=ia.live+ib.live,pa=a.points||0,pb=b.points||0;
   const side=(t,pt,i,lead)=>`<div class="sd">${tav(t)}<div class="nm">${esc(t.name)}</div><div class="big ${lead&&pt>0?'good':''}">${pt.toFixed(2)}</div><div class="sub">${hp?'Proj '+i.p.toFixed(1):'&nbsp;'}</div></div>`;
   const pc=Math.round(wp*100);
   return `<div class="card ${my?'mine':''}"><div data-mu="${id}"><div class="sb">${side(ta,pa,ia,pa>=pb)}<div class="sub" style="text-align:center">vs</div>${side(tb,pb,ib,pb>pa)}</div>
-  ${hp?`<div class="wp"><i style="width:${pc}%"></i></div><div class="sub" style="display:flex;justify-content:space-between"><span>${pc}%</span><span>Win prob (est.)</span><span>${100-pc}%</span></div>`:''}
+  ${hp?`<div class="wp"><i style="width:${pc}%"></i></div><div class="sub" style="display:flex;justify-content:space-between"><span>${pc}%</span><span>Win prob (my model)</span><span>${100-pc}%</span></div>`:''}
   <div class="sub" style="padding:6px 0 8px;text-align:center">${live?`<span class="dot"></span> ${live} live · `:''}Tap to ${open?'hide':'see'} lineups</div></div>${open?h2h(a,b,TS):''}</div>`;
 }
 function matchupsHTML(){
@@ -494,7 +571,7 @@ async function syncLeagues(){
 }
 function switchL(id){
   if(id===S.leagueId)return;
-  S.leagueId=id;ls.set('cfg',S);D=ls.get('data_'+id,null);resetTB();closeP();LV.mu=null;LV.open.clear();LV.init=false;LV.w=null;LV.ts=0;
+  S.leagueId=id;ls.set('cfg',S);D=ls.get('data_'+id,null);resetTB();closeP();LV.mu=null;LV.open.clear();LV.init=false;LV.w=null;LV.ts=0;XC={};
   if(D)render();else $('#app').innerHTML=ltabs()+'<div class="sub" style="padding:30px 16px">Loading league…</div>';
   refresh();
 }
@@ -509,16 +586,24 @@ async function refresh(force){
     const rp=lg.roster_positions||[],c=k=>rp.filter(x=>x===k).length,ss=lg.scoring_settings||{};
     const sf=c('SUPER_FLEX')>0||c('QB')>1,ppr=ss.rec??1,tep=+ss.bonus_rec_te||0,ptd=+ss.pass_td||4;
     const ov=(S.vt||{})[lid],dyn=ov?ov==='dynasty':lg.settings?.type!==0;
-    const old=ls.get('data_'+lid,null);let vals=old?.vals||{},pk=old?.pk||{},fresh=false;
+    const N=ro.length,R=lg.settings?.draft_rounds||4,start=+lg.season+(dr.some(d=>+d.season===+lg.season&&d.status!=='complete')?0:1),years=[start,start+1,start+2];
+    const old=ls.get('data_'+lid,null);let vals=old?.vals||{},mkt=old?.pc?.mkt||{},fresh=false;
     try{
-      const raw=await j(`${FC}?isDynasty=${dyn}&numQbs=${sf?2:1}&numTeams=${ro.length}&ppr=${ppr}`);
+      const raw=await j(`${FC}?isDynasty=${dyn}&numQbs=${sf?2:1}&numTeams=${N}&ppr=${ppr}`);
       vals={};const pt={};
       raw.forEach(x=>{const p=x.player||{},nm=p.name||'';
-        if(p.position==='PICK'){const y=nm.match(/20\d\d/),r=nm.match(/\b(\d)\.\d\d\b/)||nm.match(/(\d)(?:st|nd|rd|th)/);if(y&&r){const k=y[0]+'-'+r[1];(pt[k]=pt[k]||[]).push(x.value)}}
-        else if(p.sleeperId)vals[p.sleeperId]={n:nm,p:p.position,a:p.maybeAge,t:p.maybeTeam,v:x.value,r:x.overallRank}});
+        if(p.position==='PICK'){
+          const y=nm.match(/20\d\d/);if(!y)return;
+          const sl=nm.match(/\b(\d)\.(\d{1,2})\b/),rd=nm.match(/(\d)(?:st|nd|rd|th)/),tr=nm.match(/early|mid|late/i);let o;
+          if(sl)o=(+sl[1]-1)*N+Math.max(1,Math.round(+sl[2]*N/12));
+          else if(rd)o=(+rd[1]-1)*N+(tr?{early:N/6,mid:N/2,late:5*N/6}[tr[0].toLowerCase()]:N/2);
+          else return;
+          (pt[y[0]]=pt[y[0]]||[]).push([Math.round(o*10)/10,x.value]);
+        }else if(p.sleeperId)vals[p.sleeperId]={n:nm,p:p.position,a:p.maybeAge,t:p.maybeTeam,v:x.value,r:x.overallRank}});
       const tf=1+0.35*tep,qf=(!sf&&ptd>=6)?1.08:1;
       for(const i in vals){const v=vals[i];if(v.p==='TE')v.v*=tf;else if(v.p==='QB')v.v*=qf;v.v=Math.round(v.v)}
-      pk={};for(const k in pt)pk[k]=sum(pt[k])/pt[k].length;fresh=true;
+      mkt={};for(const y in pt){const m={};pt[y].forEach(([o,v])=>{(m[o]=m[o]||[]).push(v)});mkt[y]=Object.entries(m).map(([o,a])=>[+o,sum(a)/a.length]).sort((a,b)=>a[0]-b[0])}
+      fresh=true;
     }catch(e){}
     const ids=new Set(ro.flatMap(r=>r.players||[])),pl=ls.get('pl',{ts:0,m:{}}),age=Date.now()-pl.ts;
     const miss=[...ids].some(i=>!pl.m[i]&&!vals[i]);
@@ -532,26 +617,37 @@ async function refresh(force){
         pl.ts=Date.now();pl.m=m;ls.set('pl',pl)}catch(e){}
     }
     PL=pl.m;
-    const R=lg.settings?.draft_rounds||4,start=+lg.season+(dr.some(d=>+d.season===+lg.season&&d.status!=='complete')?0:1),years=[start,start+1,start+2];
-    const mx=Math.max(...Object.values(vals).map(v=>v.v),1),base=[3800,1700,800,450,300,250,200,150];
-    const pickV=(y,r)=>pk[y+'-'+r]??(base[r-1]||120)*(mx/10000)*[1,.92,.85][y-start];
+    /* pick value curve: market anchors + model built from real rookie values */
+    const mxv=Math.max(...Object.values(vals).map(v=>v.v),1),L=R*N;
+    const rk=Object.entries(vals).filter(([i,v])=>POS.includes(v.p)&&PL[i]&&PL[i].exp===0&&v.v>0).map(([i,v])=>v.v).sort((a,b)=>b-a),M=[];
+    if(rk.length>=Math.min(24,N*2)){
+      const sm=rk.map((v,i)=>{const a=rk.slice(Math.max(0,i-1),i+2);return sum(a)/a.length});
+      for(let o=1;o<=L;o++)M.push(o<=sm.length?sm[o-1]:Math.max(40,sm[sm.length-1]*Math.pow(.97,o-sm.length)));
+    }else{
+      const b=[3800,1700,800,450,300,250,200,150];
+      for(let o=1;o<=L;o++){const r=Math.ceil(o/N),s=(o-1)%N;M.push((b[r-1]||120)*(mxv/10000)*(1.35-.65*s/Math.max(1,N-1)))}
+    }
+    const kd=[.9,.82,.74],kk={};
+    years.forEach((y,i)=>{const a=(mkt[y]||[]).filter(([o])=>o<=2*N),rs=a.map(([o,v])=>v/M[Math.min(L,Math.max(1,Math.round(o)))-1]).sort((x,z)=>x-z);kk[y]=rs.length>=2?rs[Math.floor(rs.length/2)]:kd[i]});
+    const pc={py:start,N,R,yrs:years,mkt,mdl:M.map(v=>Math.round(v)),k:kk,reg:[.65,.4,.25],slot:{}};
+    ro.map(r=>({rid:r.roster_id,v:sum((r.players||[]).map(i=>vals[i]?.v||0))})).sort((a,b)=>a.v-b.v).forEach((s,i)=>pc.slot[s.rid]=i+1);
+    const sl=(rid,yi)=>(N+1)/2+(pc.slot[rid]-(N+1)/2)*pc.reg[yi];
     const rname={};ro.forEach(r=>{const u=us.find(u=>u.user_id===r.owner_id);rname[r.roster_id]=u?.metadata?.team_name||u?.display_name||'Team '+r.roster_id});
     const own={};if(dyn){ro.forEach(r=>years.forEach(y=>{for(let rd=1;rd<=R;rd++)own[`${y}-${rd}-${r.roster_id}`]=r.roster_id}));
       (tp||[]).forEach(t=>{const k=`${t.season}-${t.round}-${t.roster_id}`;if(k in own)own[k]=t.owner_id})}
     const teams=ro.map(r=>{const u=us.find(u=>u.user_id===r.owner_id);
-      const picks=Object.entries(own).filter(([k,o])=>o===r.roster_id).map(([k])=>{const [y,rd,orig]=k.split('-');
-        return{id:'pk'+k,name:`${y} Round ${rd}${+orig!==r.roster_id?` (via ${rname[orig]})`:''}`,pos:'PICK',team:'',v:pickV(+y,+rd),isPick:true,round:+rd,year:+y,age:21}}).sort((a,b)=>b.v-a.v);
+      const picks=Object.entries(own).filter(([k,o])=>o===r.roster_id).map(([k])=>{const [y,rd,orig]=k.split('-'),s=sl(+orig,+y-start),pv=pvOf(pc,+y,(+rd-1)*N+s);
+        return{id:'pk'+k,name:`${y} Round ${rd}${+orig!==r.roster_id?` (via ${rname[orig]})`:''}`,pos:'PICK',team:'',v:Math.round(pv.v),isPick:true,round:+rd,year:+y,age:21,proj:`${rd}.${pad2(Math.max(1,Math.min(N,Math.round(s))))}`}}).sort((a,b)=>b.v-a.v);
       const avatar=u?.metadata?.avatar||(u?.avatar?`https://sleepercdn.com/avatars/thumbs/${u.avatar}`:'');
       return{rid:r.roster_id,name:rname[r.roster_id],av:avatar,mine:r.owner_id===S.userId,picks,
         players:(r.players||[]).map(i=>mk(i,vals)).filter(p=>POS.includes(p.pos))}});
-    const gp=[];if(dyn)years.forEach(y=>{for(let rd=1;rd<=R;rd++)gp.push({id:'g'+y+rd,name:`${y} Round ${rd}`,v:pickV(y,rd),isPick:true,round:rd,pos:'PICK'})});
     let cur=null;
     if(st&&+st.week>0){try{const m=await j(`${API}/league/${lid}/matchups/${st.week}`),myR=teams.find(t=>t.mine)?.rid,mt=m.find(x=>x.roster_id===myR);if(mt)cur={week:+st.week,starters:mt.starters||[]}}catch(e){}}
-    const nd={teams,vals,pk,gp,cur,lname:lg.name,lav:lg.avatar,sf,ppr,ts:Date.now(),vs:{dyn,sf,ppr,tep,ptd,n:ro.length},
+    const nd={teams,vals,pc,cur,lname:lg.name,lav:lg.avatar,sf,ppr,ts:Date.now(),vs:{dyn,sf,ppr,tep,ptd,n:N},
       sl:rp.filter(x=>!['BN','IR','TAXI'].includes(x)).map(x=>x==='FLEX'||x==='REC_FLEX'?'FLX':x==='SUPER_FLEX'?'SF':x),
       slots:{QB:c('QB'),RB:c('RB'),WR:c('WR'),TE:c('TE'),FLEX:c('FLEX')+c('REC_FLEX'),SF:c('SUPER_FLEX')}};
     ls.set('data_'+lid,nd);
-    if(lid===S.leagueId){D=nd;NC=null;POOLKEY='';status=fresh?'Updated just now':'Rosters updated · values offline';
+    if(lid===S.leagueId){D=nd;NC=null;POOLKEY='';NEAR=null;XC={};status=fresh?'Updated just now':'Rosters updated · values offline';
       const ok=new Set(teams.flatMap(t=>[...t.players,...t.picks].map(p=>p.id)));
       Object.keys(TB.mv).forEach(i=>{if(!ok.has(i))delete TB.mv[i]});
       if(st&&st.season_type==='regular'&&+st.week>0)loadMU(String(st.season),+st.week,ppr).then(()=>{if(S.leagueId===lid)soft()}).catch(()=>{});
@@ -590,10 +686,12 @@ const inj=s=>s?`<span class="inj" style="background:${IC[s]||'#c9971c'}">${IA[s]
 const prow=(p,slot,hl)=>{
   const sl=slot?`<span class="slot" style="color:${CL[slot]}">${slot}</span>`:'';
   if(!p)return`<div class="row">${sl}<div class="grow sub">Empty</div></div>`;
-  if(p.isPick)return`<div class="row">${sl}${pav(p)}<div class="grow"><div class="nm">${esc(p.name)}</div><div class="sub">Draft pick</div></div><div class="val">${fmt(p.v)}</div></div>`;
+  if(p.isPick)return`<div class="row">${sl}${pav(p)}<div class="grow"><div class="nm">${esc(p.name)}</div><div class="sub">Draft pick${p.proj?' · proj '+p.proj:''}</div></div><div class="val">${fmt(p.v)}</div></div>`;
   return`<div class="row ${hl?'hl':''}" data-pid="${p.id}">${sl}${av(p.id)}<div class="grow"><div class="nm">${esc(p.name)}${inj(p.inj)}</div><div class="sub">${p.pos} - ${esc(p.team)}${p.age?' · '+Math.round(p.age):''}</div></div><div class="val">${fmt(p.v)}${xps(p)}</div></div>`;
 };
-const lrow=(p,slot,sc,hp)=>{const x=hp?xp(p):null;return`<div class="row" data-pid="${p.id}"><span class="slot" style="color:${CL[slot]||CL.BN}">${slot}</span>${av(p.id)}<div class="grow"><div class="nm">${esc(p.name)}${inj(p.inj)}</div><div class="sub">${p.pos} - ${esc(p.team)}${x?` · vs ${x.o}${x.f>=1.05?' ▲':x.f<=.95?' ▼':''}`:hp?' · no projection (bye?)':''}</div></div><div class="val">${hp?sc.toFixed(1):fmt(p.v)}<div class="sub">${hp?'proj pts':'value'}</div></div></div>`};
+const lrow=(p,slot,sc,hp)=>{const x=hp?xp(p):null;
+  const rg=x&&x.sd?`${Math.max(0,x.pts-.67*x.sd).toFixed(0)}–${(x.pts+.67*x.sd).toFixed(0)} range`:'my proj';
+  return`<div class="row" data-pid="${p.id}"><span class="slot" style="color:${CL[slot]||CL.BN}">${slot}</span>${av(p.id)}<div class="grow"><div class="nm">${esc(p.name)}${inj(p.inj)}</div><div class="sub">${p.pos} - ${esc(p.team)}${x?` · vs ${x.o}${x.f>=1.05?' ▲':x.f<=.95?' ▼':''}${x.sl!=null?` · Sleeper ${x.sl.toFixed(1)}`:''}`:hp?' · no game/projection':''}</div></div><div class="val">${hp?sc.toFixed(1):fmt(p.v)}<div class="sub">${hp?rg:'value'}</div></div></div>`};
 const seg=()=>`<div class="seg">${Object.entries(MODES).map(([k,l])=>`<button class="${(S.mode||'fringe')===k?'on':''}" data-m="${k}">${l}</button>`).join('')}</div>`;
 function owners(){const m={};D.teams.forEach(t=>t.players.forEach(p=>m[p.id]=t));return m}
 const total=t=>sum(t.players.map(p=>p.v))+sum(t.picks.map(p=>p.v));
@@ -627,9 +725,9 @@ function tabRoster(){
   <div class="card">${nd.map(n=>`<div class="row" style="min-height:46px"><span class="slot" style="color:${CL[n.k]};width:34px">${n.k}</span><div class="grow"><div class="bar" style="margin:0"><i style="width:${n.mine/n.max*100}%;background:${CL[n.k]}"></i></div></div><span class="sub" style="width:66px;text-align:right">#${n.rank} of ${N}</span><span class="tag" style="color:${n.lab==='Strength'?'#00ceb8':n.lab==='Need'?'#ff8fa8':'#f5c6e0'};width:74px;text-align:center">${n.lab}</span></div>`).join('')}
   <div style="padding:6px 0 8px">${tips.map(t=>`<div class="tip">${t}</div>`).join('')}</div></div>
   <div class="sec">${hp?`Recommended lineup · Week ${MU.week}`:'Best lineup by trade value'}</div>
-  <div class="card"><div style="padding:10px 0 2px"><b style="font-size:17px">${hp?tot.toFixed(1)+' projected pts':'Weekly projections start with the NFL season'}</b></div>
+  <div class="card"><div style="padding:10px 0 2px"><b style="font-size:17px">${hp?tot.toFixed(1)+' projected pts (my model)':'Weekly projections start with the NFL season'}</b></div>
   ${L.rows.map(r=>r.p?lrow(r.p,r.s,r.sc,hp):`<div class="row"><span class="slot" style="color:${CL[r.s]}">${r.s}</span><div class="grow sub">Empty</div></div>`).join('')}${swap}
-  <div class="sub" style="padding:6px 0 10px">${hp?'Sleeper projections adjusted for opponent, with injured players discounted (Out and IR count as 0). Players whose games have started can’t be swapped in Sleeper.':'Until then, lineups are ranked by trade value.'}</div></div>
+  <div class="sub" style="padding:6px 0 10px">${hp?'My projections blend each player’s recent form with Sleeper’s numbers, then adjust for opponent, Vegas game totals, home field and injuries. Out and IR count as 0. Tap a player for the breakdown.':'Until then, lineups are ranked by trade value.'}</div></div>
   <div class="sec">Bench</div><div class="card">${L.bench.map(x=>lrow(x.p,'BN',x.sc,hp)).join('')||'<div class="row sub">Empty</div>'}</div>
   ${dy?`<div class="sec">Draft picks (${me.picks.length})</div><div class="card">${me.picks.map(p=>prow(p)).join('')||'<div class="row sub">No picks</div>'}</div>`:''}
   <button class="lnk" id="sw">Switch account</button>`;
@@ -640,21 +738,19 @@ function tabLeague(){
     return`<details class="card ${x.t.mine?'mine':''}"><summary><div class="row" style="border:0"><span class="sub" style="width:18px">${i+1}</span>${tav(x.t)}<div class="grow"><div class="nm">${esc(x.t.name)}</div><div class="sub">${r.win} · Needs: ${nl.join(', ')||'none'}</div><div class="bar"><i style="width:${x.v/mx*100}%"></i></div></div><div class="val">${fmt(x.v)}</div></div></summary>${[...x.t.players].sort((a,b)=>b.v-a.v).map(p=>prow(p)).join('')}${x.t.picks.map(p=>prow(p)).join('')}</details>`}).join('');
 }
 function tabValues(){
-  const v=D.vs||{},dy=DYN();if(filt==='PICKS'&&!dy)filt='ALL';
+  const v=D.vs||{},dy=DYN();
+  const sgm=dy?`<div class="seg">${[['p','Players'],['k',(D.pc?.py||'')+' Draft Picks']].map(([k,l])=>`<button class="${VS===k?'on':''}" data-pv="${k}">${l}</button>`).join('')}</div>`:'';
+  if(dy&&VS==='k')return sgm+tabPicks();
   const tags=[v.dyn?'Dynasty values':'Redraft values',v.sf?'Superflex':'1QB',`${v.ppr} PPR`,v.tep?`TE premium +${v.tep}`:null,v.ptd>=6?'6-pt pass TD':null,`${v.n} teams`].filter(Boolean);
-  return `<div class="card pad"><div class="sub">VALUE SETTINGS · detected from your league</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">${tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
+  return sgm+`<div class="card pad"><div class="sub">VALUE SETTINGS · detected from your league</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">${tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>
   <div class="seg" style="margin:6px 0 0"><button class="${v.dyn?'on':''}" data-vt="dynasty">Dynasty</button><button class="${v.dyn?'':'on'}" data-vt="redraft">Redraft</button></div>
-  <div class="sub" style="margin-top:6px">Values come from FantasyCalc for your format. I add TE premium and 6-point passing TD adjustments on top.${dy?' Pick values are estimates.':' Draft picks are hidden in redraft.'}</div></div>
-  <input id="q" placeholder="Search players${dy?' or picks':''}" value="${esc(q)}"><div class="chips">${['ALL',...POS,...(dy?['PICKS']:[])].map(p=>`<button class="chip ${filt===p?'on':''}" data-f="${p}">${p}</button>`).join('')}</div><div id="vl"></div>`;
+  <div class="sub" style="margin-top:6px">Values come from FantasyCalc for your format. I add TE premium and 6-point passing TD adjustments on top.${dy?'':' Draft picks are hidden in redraft.'}</div></div>
+  <input id="q" placeholder="Search players" value="${esc(q)}"><div class="chips">${['ALL',...POS].map(p=>`<button class="chip ${filt===p?'on':''}" data-f="${p}">${p}</button>`).join('')}</div><div id="vl"></div>`;
 }
 function valList(){
   const own=owners(),mx=Math.max(...Object.values(D.vals).map(v=>v.v),1),ql=q.toLowerCase();
-  let items=[];
-  if(filt!=='PICKS')items=Object.entries(D.vals).map(([id,v])=>({id,name:v.n,pos:v.p,team:v.t,v:v.v,r:v.r})).filter(p=>POS.includes(p.pos)&&(filt==='ALL'||p.pos===filt));
-  if(DYN()&&(filt==='ALL'||filt==='PICKS'))items=items.concat(D.gp);
-  items=items.filter(p=>p.name.toLowerCase().includes(ql)).sort((a,b)=>b.v-a.v).slice(0,150);
+  const items=Object.entries(D.vals).map(([id,v])=>({id,name:v.n,pos:v.p,team:v.t,v:v.v,r:v.r})).filter(p=>POS.includes(p.pos)&&(filt==='ALL'||p.pos===filt)&&p.name.toLowerCase().includes(ql)).sort((a,b)=>b.v-a.v).slice(0,150);
   $('#vl').innerHTML=`<div class="card">${items.map(p=>{
-    if(p.isPick)return`<div class="row"><span class="sub" style="width:26px">–</span>${pav(p)}<div class="grow"><div class="nm">${esc(p.name)}</div><div class="sub">Draft pick · estimated league-wide value</div><div class="bar"><i style="width:${p.v/mx*100}%;background:#ffb612"></i></div></div><div class="val">${fmt(p.v)}</div></div>`;
     const o=own[p.id],s=PL[p.id]?.inj;
     return`<div class="row" data-pid="${p.id}"><span class="sub" style="width:26px">${p.r}</span>${av(p.id)}<div class="grow"><div class="nm">${esc(p.name)}${inj(s)}</div><div class="sub">${p.pos} - ${esc(PL[p.id]?.t||p.team||'FA')} · <span class="${o?.mine?'good':''}">${o?(o.mine?'You':esc(o.name)):'Unrostered'}</span></div><div class="bar"><i style="width:${p.v/mx*100}%"></i></div></div><div class="val">${fmt(p.v)}${xps(p)}</div></div>`}).join('')||'<div class="row sub">No matches</div>'}</div>`;
 }
@@ -711,10 +807,18 @@ function openP(id){
   const details=[p.age?'Age '+Math.round(p.age):'',ht,p.wt?p.wt+' lb':'',p.col,p.exp!=null?(p.exp?p.exp+' yrs exp':'Rookie'):''].filter(Boolean).join(' · ');
   const x=xp(p);let mu='';
   if(MU&&POS.includes(p.pos)){
-    if(x){const fs=Object.values(MU.F||{}).map(o=>o[p.pos]).filter(Boolean),f=MU.F?.[x.o]?.[p.pos],rk=f?fs.filter(z=>z>f).length+1:null;
-      mu=`<div class="sec">Week ${MU.week} matchup</div><div class="card pad"><div style="display:flex;justify-content:space-around;text-align:center"><div><div class="val" style="font-size:20px;text-align:center">${x.base.toFixed(1)}</div><div class="sub">Sleeper proj</div></div><div><div class="val good" style="font-size:20px;text-align:center">${x.pts.toFixed(1)}</div><div class="sub">Expected</div></div><div><div class="val" style="font-size:20px;text-align:center">vs ${x.o}</div><div class="sub">Opponent</div></div></div>
-      <div class="why" style="margin-top:8px">${f?`${x.o} has allowed the <b>#${rk}</b> most ${p.pos} points of ${fs.length} defenses (${f>=1.05?'soft matchup ▲':f<=.95?'tough matchup ▼':'neutral matchup'}). Expected points = projection adjusted lightly for that.`:'Defense matchup data is still loading, so this is the unadjusted projection.'}</div></div>`}
-    else if(p.team!=='FA')mu=`<div class="sec">Week ${MU.week} matchup</div><div class="card pad sub">No projection this week (bye week or inactive).</div>`;
+    if(x){
+      const fs=Object.values(MU.F||{}).map(o=>o[p.pos]).filter(Boolean),f=MU.F?.[x.o]?.[p.pos],rk=f?fs.filter(z=>z>f).length+1:null,W=[];
+      if(x.mode==='model'){
+        W.push(`Recent form: <b>${x.form.toFixed(1)}</b> pts per game over his last ${x.n} games, weighting recent games more`);
+        W.push(`Matchup vs ${x.o}: ${x.f>=1.05?'soft ▲':x.f<=.95?'tough ▼':'neutral'}${rk?` (#${rk} most ${p.pos} points allowed of ${fs.length})`:''}, ${x.mu>=1?'+':''}${((x.mu-1)*100).toFixed(0)}%`);
+        if(x.od)W.push(`Vegas: ${esc(p.team)} implied <b>${x.od.imp.toFixed(1)}</b> pts${x.od.sp<0?`, favored by ${Math.abs(x.od.sp)}`:x.od.sp>0?`, underdog by ${x.od.sp}`:''}, ${x.env>=1?'+':''}${((x.env-1)*100).toFixed(0)}% for his role`);
+        W.push(`${x.hm>1?'Home game +1.5%':'Away game −1.5%'}`);
+        W.push(x.sl!=null?`Blended with Sleeper’s projection (${x.sl.toFixed(1)}): recent form counts ${Math.round(x.wf*100)}%, Sleeper ${Math.round((1-x.wf)*100)}%`:'No Sleeper projection, so this is form-based only');
+      }else W.push('Not enough games this season yet, so this equals Sleeper’s projection.');
+      mu=`<div class="sec">Week ${MU.week} projection</div><div class="card pad"><div style="display:flex;justify-content:space-around;text-align:center"><div><div class="val good" style="font-size:22px;text-align:center">${x.pts.toFixed(1)}</div><div class="sub">My projection</div></div><div><div class="val" style="font-size:22px;text-align:center">${x.sl!=null?x.sl.toFixed(1):'–'}</div><div class="sub">Sleeper</div></div><div><div class="val" style="font-size:22px;text-align:center">${x.sd?Math.max(0,x.pts-.67*x.sd).toFixed(0)+'–'+(x.pts+.67*x.sd).toFixed(0):'–'}</div><div class="sub">Likely range</div></div></div>
+      <div class="sub" style="margin-top:6px">vs ${x.o}. Injury status isn’t included here but is applied to lineup picks.</div>${W.map(t=>`<div class="why">• ${t}</div>`).join('')}</div>`;
+    }else if(p.team!=='FA')mu=`<div class="sec">Week ${MU.week} projection</div><div class="card pad sub">No game or projection this week (bye week or inactive).</div>`;
   }
   m.innerHTML=`<div class="back" id="bk">‹ Back</div>
   <div class="hd" style="gap:14px">${av(id,1)}<div><h1 style="font-size:22px">${esc(p.name)}</h1><div class="sub">${p.pos} · ${esc(p.team)}${p.num?' · #'+p.num:''}</div><div class="sub" style="margin-top:2px">${esc(details)}</div></div></div>
@@ -733,6 +837,9 @@ document.addEventListener('click',e=>{
   if(el=T('[data-lg]')){switchL(el.dataset.lg);return}
   if(el=T('[data-m]')){S.mode=el.dataset.m;ls.set('cfg',S);const y=scrollY;render();scrollTo(0,y);return}
   if(el=T('[data-vt]')){S.vt=S.vt||{};S.vt[S.leagueId]=el.dataset.vt;ls.set('cfg',S);refresh();return}
+  if(el=T('[data-pv]')){VS=el.dataset.pv;render();scrollTo(0,0);return}
+  if(el=T('[data-py]')){PV.y=+el.dataset.py;render();return}
+  if(el=T('[data-pr]')){PV.r=+el.dataset.pr;render();return}
   if(el=T('[data-lv]')){LV.view=el.dataset.lv;render();return}
   if(el=T('[data-wk]')){const cw=LV.wk?.week||1,w=Math.min(18,Math.max(1,(LV.w||cw)+ +el.dataset.wk));LV.w=w;LV.mu=null;LV.open.clear();LV.init=false;LV.ts=0;liveLoad();return}
   if(el=T('[data-mu]')){const i=el.dataset.mu;LV.open.has(i)?LV.open.delete(i):LV.open.add(i);paintLive();return}
@@ -742,7 +849,7 @@ document.addEventListener('click',e=>{
   if(el=T('[data-ob]')){const r=TGP[+el.dataset.ob],pt=owners()[TG.id],me=D.teams.find(t=>t.mine);
     if(r&&pt&&me){TB.tm=[pt.rid];TB.mv={};r.give.forEach(p=>TB.mv[p.id]=pt.rid);TB.mv[TG.id]=me.rid;TB.op=new Set([me.rid,pt.rid]);TB.view='build';render();scrollTo(0,0)}return}
   if(el=T('[data-tgt]')){TG.id=el.dataset.tgt;TG.q='';render();scrollTo(0,0);return}
-  if(el=T('[data-rm]')){const r=+el.dataset.rm;TB.tm=TB.tm.filter(x=>x!==r);const ids=new Set(parts().map(t=>t.rid));Object.keys(TB.mv).forEach(i=>{const o=ownerMap()[i];if(!o||!ids.has(o.rid)||!ids.has(TB.mv[i]))delete TB.mv[i]});render();return}
+  if(el=T('[data-rm]')){const r=+el.dataset.rm;TB.tm=TB.tm.filter(x=>x!==r);const ids=new Set(parts().map(t=>t.rid)),om=ownerMap();Object.keys(TB.mv).forEach(i=>{const o=om[i];if(!o||!ids.has(o.rid)||!ids.has(TB.mv[i]))delete TB.mv[i]});render();return}
   if(el=T('[data-co]')){const r=+el.dataset.co;TB.op.has(r)?TB.op.delete(r):TB.op.add(r);const y=scrollY;render();scrollTo(0,y);return}
   if(el=T('[data-tg]')){const id=el.dataset.tg,o=ownerMap()[id];
     if(o){const opts=parts().filter(t=>t.rid!==o.rid).map(t=>t.rid),cur=TB.mv[id],i=opts.indexOf(cur);
@@ -767,7 +874,7 @@ function render(){
   $('#sw')&&($('#sw').onclick=()=>{S={mode:S.mode,vt:S.vt};D=null;ls.set('cfg',S);resetTB();setup()});
   const sel=$('#tba');if(sel)sel.onchange=()=>{const r=+sel.value,me=D.teams.find(t=>t.mine);if(r&&me){TB.tm.push(r);TB.op.add(r);TB.op.add(me.rid);render()}};
   if(tab==='trades'&&TB.view==='target'){const i=$('#tgq');if(i){i.oninput=e=>{TG.q=e.target.value;tgList()};tgList()}}
-  if(tab==='values'){valList();$('#q').oninput=e=>{q=e.target.value;valList()};
+  if(tab==='values'&&(VS==='p'||!DYN())){valList();$('#q').oninput=e=>{q=e.target.value;valList()};
     document.querySelectorAll('.chip[data-f]').forEach(b=>b.onclick=()=>{filt=b.dataset.f;render()})}
   if(tab==='live'&&Date.now()-LV.ts>15000)liveLoad();
 }
