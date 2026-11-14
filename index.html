@@ -908,3 +908,88 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&S.leagueI
   refresh();
 })();
 </script></body></html>
+<script>
+/* ===== 2027 draft board add-on (paste at the very end of index.html) ===== */
+const PB={upd:'2026-11-13',cls:2027,p:[
+['Jeremiah Smith','WR','Ohio State',100,'Consensus 1.01'],
+['Dante Moore','QB','Oregon',90,''],
+['Arch Manning','QB','Texas',88,''],
+['Jadan Baugh','RB','Florida',86,'Bottled up vs Missouri'],
+['Darian Mensah','QB','Miami',85,''],
+['Cam Coleman','WR','Texas',84,''],
+['Kewan Lacy','RB','Ole Miss',83,'Minor early-season health issues'],
+['Trinidad Chambliss','QB','Ole Miss',80,''],
+['Charlie Becker','WR','Indiana',79,''],
+['CJ Carr','QB','Notre Dame',78,''],
+['Julian Sayin','QB','Ohio State',77,''],
+['Jamari Johnson','TE','Oregon',74,'Missed 2 games, undisclosed injury'],
+['Ahmad Hardy','RB','Missouri',73,''],
+['KJ Duff','WR','Rutgers',72,''],
+['Ryan Williams','WR','Alabama',71,''],
+['Drew Mestemaker','QB','Oklahoma State',70,''],
+['Nate Frazier','RB','Georgia',68,''],
+['Isaac Brown','RB','Louisville',67,''],
+["Trey'Dez Green",'TE','LSU',66,'Injured vs Ole Miss'],
+['Bryant Wesco Jr.','WR','Clemson',65,''],
+['Ryan Wingo','WR','Texas',63,''],
+['Drake Lindsey','QB','Minnesota',62,''],
+['Jayden Maiava','QB','USC',60,''],
+['LJ Martin','RB','BYU',58,''],
+['Antwan Raymond','RB','Rutgers',56,''],
+['Jamal Roberts','RB','Missouri',52,''],
+['Chris Corbo','TE','Georgia Tech',52,''],
+['Dylan Raiola','QB','Oregon',50,'Backup to Moore'],
+['Nico Iamaleava','QB','UCLA',48,''],
+['Lawson Luckie','TE','Georgia',45,'']
+]};
+let PBX=null,PBV='board',PBP='ALL';
+const PBD=()=>PBX||PB,pbn=s=>String(s).toLowerCase().replace(/[^a-z]/g,'');
+async function loadPros(){try{const r=await fetch('prospects.json?'+Date.now(),{cache:'no-store'});if(!r.ok)return;const d=await r.json();
+  if(d&&Array.isArray(d.p)&&d.p.length>=8&&String(d.upd||'')>=PB.upd){PBX=d;if(tab==='values'&&VS==='k')soft()}}catch(e){}}
+function pbBoard(){
+  const d=PBD(),pc=D.pc,N=pc.N,y=d.cls,tep=D.vs?.tep||0,nm={};
+  Object.entries(D.vals).forEach(([id,v])=>{if(POS.includes(v.p)&&v.v>0)nm[pbn(v.n)]={id,v:v.v}});
+  const L=d.p.filter(x=>POS.includes(x[1])).map(([n,p,s,sc,nt])=>({n,p,s,sc,nt,a:sc*(p==='QB'?(D.sf?1:.62):p==='TE'?1+.3*tep:1)})).sort((a,b)=>b.a-a.a);
+  L.forEach((x,i)=>{x.live=nm[pbn(x.n)];x.est=x.live?x.live.v:pvOf(pc,y,i+1).v});
+  const nl=L.filter(x=>x.live).length;if(nl>=8)L.sort((a,b)=>b.est-a.est);
+  L.forEach((x,i)=>{x.o=i+1;x.rd=Math.ceil((i+1)/N);x.pk=i%N+1;x.pv=pvOf(pc,y,i+1).v;x.lab=x.rd+'.'+pad2(x.pk)});
+  return{L:L.filter(x=>x.rd<=pc.R),nl,y,N,pc};
+}
+const pbRow=(x,extra)=>`<div class="row" style="align-items:flex-start" ${x.live?`data-pid="${x.live.id}"`:''}><span class="slot" style="width:44px;color:#ffb612;font-size:13px;padding-top:2px">${x.lab}</span><div class="grow"><div class="nm">${esc(x.n)} <span class="tag" style="color:${CL[x.p]}">${x.p}</span></div><div class="sub">${esc(x.s)}${x.nt?' · '+esc(x.nt):''}${x.live?' · <span class="good">live value</span>':''}</div>${extra||''}</div><div class="val" style="font-size:15px">${fmt(x.pv)}<div class="sub">pick value</div></div></div>`;
+function tabPicks(){
+  const pc=D.pc;if(!pc)return'<div class="card pad sub">Update to the latest version of the app to see the draft board.</div>';
+  const B=pbBoard(),d=PBD(),me=D.teams.find(t=>t.mine),NR=me?computeNeeds().R[me.rid]:null,N=B.N;
+  const seg=`<div class="seg">${[['board','Draft board'],['rank','Rankings'],['tgt','Targets']].map(([k,l])=>`<button class="${PBV===k?'on':''}" data-pbv="${k}">${l}</button>`).join('')}</div>`;
+  const head=`<div class="card pad"><div class="sub">${B.y} ROOKIE DRAFT · QB / RB / WR / TE ONLY</div><div class="why" style="margin-top:6px">${D.sf?'Superflex':'1QB'}${D.vs?.tep?' · TE premium':''} board. ${B.nl>=8?`Ranked by live market values for ${B.nl} prospects.`:'Ranked by my blend of draft and dynasty rankings.'} Pick values, pick ownership, draft order and your needs refresh every time you open the app.</div>${pc.py!==B.y?`<div class="why warn">Your league’s next rookie draft is the ${pc.py} class. This board covers the ${B.y} class.</div>`:''}</div>`;
+  const owner={};D.teams.forEach(t=>t.picks.forEach(p=>owner[p.id]=t));
+  const bySlot=[...D.teams].sort((a,b)=>pc.slot[a.rid]-pc.slot[b.rid]);let body='';
+  if(PBV==='board'){
+    body=`<div class="card">${B.L.map(x=>{const t=bySlot[x.pk-1],ow=t&&owner[`pk${B.y}-${x.rd}-${t.rid}`];
+      const own=ow?(ow.mine?'<span class="good">You own this pick</span>':'Owned by '+esc(ow.name)):(t?'Pick: '+esc(t.name):'');
+      const via=t&&ow&&ow.rid!==t.rid?` (from ${esc(t.name)})`:'';
+      const f=NR&&NR.pos[x.p].lv===2?'<div style="margin-top:3px"><span class="tag good">Fills your need</span></div>':'';
+      return pbRow(x,`<div class="sub">${own}${via}</div>${f}`)}).join('')}</div>`;
+  }else if(PBV==='rank'){
+    body=`<div class="chips">${['ALL',...POS].map(p=>`<button class="chip ${PBP===p?'on':''}" data-pbp="${p}">${p}</button>`).join('')}</div><div class="card">${B.L.filter(x=>PBP==='ALL'||x.p===PBP).map(x=>pbRow(x,`<div class="sub">Overall #${x.o} · ${x.p}${B.L.filter(z=>z.p===x.p&&z.o<=x.o).length}</div>`)).join('')}</div>`;
+  }else if(!me)body='<div class="card pad">No team found.</div>';
+  else{
+    const mine=me.picks.filter(p=>p.year===B.y).map(p=>({p,o:(p.round-1)*N+(+String(p.proj).split('.')[1]||Math.ceil(N/2))})).sort((a,b)=>a.o-b.o);
+    const mx=Math.max(...B.L.map(x=>x.est),1),need=POS.filter(k=>NR.pos[k].lv===2),str=POS.filter(k=>NR.pos[k].lv===0);
+    const T=B.L.map(x=>({x,l:NR.pos[x.p],sc:x.est/mx*50+(NR.pos[x.p].lv===2?40:NR.pos[x.p].lv===1?12:0)})).sort((a,b)=>b.sc-a.sc).slice(0,8);
+    body=`<div class="card pad"><div class="why"><b>Your needs:</b> ${need.join(', ')||'none'} · <b>Strengths:</b> ${str.join(', ')||'none'}</div><div class="why">Your ${B.y} picks: ${mine.map(m=>`<b>${m.p.proj}</b>`).join(', ')||'none'}</div></div>`+T.map(({x,l})=>{
+      const nr=mine.slice().sort((a,b)=>Math.abs(a.o-x.o)-Math.abs(b.o-x.o))[0];let path;
+      if(!nr)path=`You hold no ${B.y} picks. Trade for one near ${x.lab}.`;
+      else if(nr.o<=x.o-3)path=`He projects later than your ${nr.p.proj}. Take him there only if you love him, or trade down.`;
+      else if(nr.o<=x.o+2)path=`<span class="good">Fits your ${nr.p.proj}</span>: he projects around ${x.lab}.`;
+      else path=`Likely gone by your ${nr.p.proj}. Trade up toward ${x.lab} (about +${fmt(Math.max(0,x.pv-pvOf(pc,B.y,nr.o).v))} in value).`;
+      return`<div class="card">${pbRow(x,`<div class="why">${l.lv===2?`✔ Fills your <b>${x.p}</b> need (#${l.rank} of ${D.teams.length})`:l.lv===0?`${x.p} is already a strength (#${l.rank}), so this is value over need`:`Adds ${x.p} depth (#${l.rank} of ${D.teams.length})`}</div><div class="why">${path}</div>`)}</div>`}).join('');
+  }
+  return seg+head+body+`<div class="card pad"><div class="sub">Board data: ${esc(d.upd)}. My blend of Ourlads, Draft Sharks, Dynasty Nerds, PFN and RotoBaller early 2027 rankings, adjusted for your league format. College seasons change fast, so treat this as a guide.${PBX?' Using your prospects.json.':''}</div></div>`;
+}
+document.addEventListener('click',e=>{
+  let el=e.target.closest('[data-pbv]');if(el){PBV=el.dataset.pbv;render();scrollTo(0,0);return}
+  el=e.target.closest('[data-pbp]');if(el){PBP=el.dataset.pbp;render()}
+});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadPros()});
+loadPros();
+</script>
